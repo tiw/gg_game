@@ -39,12 +39,11 @@ class Player(Actor):
     def fire(self):
         self.image = self.fire_image
         laser_pos = (self.pos[0] + 50, self.pos[1])
-        print(laser_pos)
         ang = self.ang
         laser = Actor(self.laser_image, laser_pos)
         laser.angle = -90
         laser.exact_pos = laser.start_pos = Vector2(self.pos)
-        laser.velocity = Vector2(math.cos(ang), math.sin(ang)).normalize() * 100.0
+        laser.velocity = Vector2(math.cos(ang), math.sin(ang)).normalize() * 300.0
         return laser
 
 player_a = Player('p1_front', (100, 400), 'p1_laser', 'p1_jump')
@@ -72,8 +71,6 @@ def on_key_up(key):
 def update(dt):
     for laser in game.lasers:
         laser.exact_pos += (laser.velocity * dt)
-        print(laser.exact_pos)
-        print(laser.x)
         if laser.exact_pos.x < 0 or laser.exact_pos.x > WIDTH:
             game.lasers.remove(laser)
         laser.pos = laser.exact_pos.x % WIDTH, laser.exact_pos.y % HEIGHT
