@@ -57,7 +57,7 @@ def on_key_down(key):
         # player_a.image = 'p1_jump'  # Ensure this image exists
         laser = player_a.fire()
         game.lasers.append(laser)
-        player_b.take_damage()
+        # player_b.take_damage()
 
     if key == keys.K_2:  # Placeholder for player B's attack
         player_b.image = 'p2_jump'  # Ensure this image exists
@@ -71,8 +71,12 @@ def on_key_up(key):
 def update(dt):
     for laser in game.lasers:
         laser.exact_pos += (laser.velocity * dt)
-        if laser.exact_pos.x < 0 or laser.exact_pos.x > WIDTH:
+        c = laser.collidelist([player_b])
+        if c > -1:
+            player_b.take_damage()
             game.lasers.remove(laser)
+        # if laser.exact_pos.x < 0 or laser.exact_pos.x > WIDTH:
+        #     game.lasers.remove(laser)
         laser.pos = laser.exact_pos.x % WIDTH, laser.exact_pos.y % HEIGHT
 
 # Drawing
