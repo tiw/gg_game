@@ -2,6 +2,7 @@ import pgzrun
 import time
 import math
 from pygame.math import Vector2
+import pygame
 
 # Game settings
 WIDTH = 1024
@@ -9,8 +10,21 @@ HEIGHT = 512
 INIT_BLOOD = 5
 
 
+
+# 定义一个计算阶乘的函数
+def factorial(n):
+    if n == 0:
+        return 1
+    else:
+        return n * factorial(n - 1)
+
+
+
 class GameState():
     lasers = []
+    game_over = []
+    game_over_images = ['keyboard_g_outline', 'keyboard_a_outline', 'keyboard_m_outline', 'keyboard_e_outline', 
+        'keyboard_o_outline', 'keyboard_v_outline','keyboard_e_outline', 'keyboard_r_outline']
 
 game = GameState()
 
@@ -38,6 +52,8 @@ class Player(Actor):
         self.image = self.hurt_image
         if self.blood > 0:
             self.blood -= damage
+        self.image = self.hurt_image
+        self._surf = pygame.transform.flip(self._surf, True, False)
 
     def fire(self):
         self.image = self.fire_image
@@ -60,7 +76,10 @@ def on_key_down(key):
         # player_a.image = 'p1_jump'  # Ensure this image exists
         laser = player_a.fire()
         game.lasers.append(laser)
-        # player_b.take_damage()
+        player_b.take_damage()
+
+    if player_b.image != player_b.stand_image:
+        player_b.image = player_b.stand_image
 
     if player_b.image != player_b.stand_image:
         player_b.image = player_b.stand_image
@@ -87,6 +106,13 @@ def update(dt):
         #     game.lasers.remove(laser)
         laser.pos = laser.exact_pos.x % WIDTH, laser.exact_pos.y % HEIGHT
 
+
+    if (player_a.blood == 0) or (player_b.blood == 0):
+        i = 0
+        for l in game.game_over_images:
+            game.game_over.append(Actor(l, (WIDTH / 2 - 150 + i, HEIGHT / 2)))
+            i += 50
+
 # Drawing
 cloud_pos = 200, 100
 def draw():
@@ -98,10 +124,13 @@ def draw():
     screen.blit('cloud1', cloud_pos)
     player_a.draw()
     player_b.draw()
+    # game.game_over.draw()
     player_a.draw_hearts(80)
     player_b.draw_hearts(904)
 
     for laser in game.lasers:
         laser.draw()
+    for l in game.game_over:
+        l.draw()
 
 pgzrun.go()
