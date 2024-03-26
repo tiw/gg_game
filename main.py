@@ -3,30 +3,36 @@ import time
 import math
 from pygame.math import Vector2
 import pygame
+import sys
 
 # Game settings
 WIDTH = 1024
 HEIGHT = 512
 INIT_BLOOD = 5
 
-
-
-# 定义一个计算阶乘的函数
-def factorial(n):
-    if n == 0:
-        return 1
-    else:
-        return n * factorial(n - 1)
-
-
-
 class GameState():
     lasers = []
+    shields = []
     game_over = []
     game_over_images = ['keyboard_g_outline', 'keyboard_a_outline', 'keyboard_m_outline', 'keyboard_e_outline', 
         'keyboard_o_outline', 'keyboard_v_outline','keyboard_e_outline', 'keyboard_r_outline']
 
 game = GameState()
+# 自定义的 Actor 子类，添加自动消失的功能
+class TimedActor(Actor):
+    def __init__(self, image, pos, disappear_after=2):
+        super().__init__(image, pos)
+        self.disappear_after = disappear_after
+        self.creation_time = time.time()
+
+    def update(self):
+        # 检查是否超过了消失时间
+        if time.time() - self.creation_time >= self.disappear_after:
+            self.disappear()
+
+    def disappear(self):
+        # 让 Actor 消失的逻辑，这里我们简单地把它移出屏幕
+        self.pos = (-100, -100)  # 移到屏幕外部
 
 # Actors
 class Player(Actor):
@@ -62,6 +68,14 @@ class Player(Actor):
         laser.exact_pos = laser.start_pos = Vector2(self.pos)
         laser.velocity = Vector2(math.cos(ang), math.sin(ang)).normalize() * 300.0
         return laser
+    
+    def defending(self):
+        shield = TimedActor('shield1', self.pos)
+        return shield
+    
+    def reset_image(self):
+        if self.image != self.stand_image:
+            self.image = self.stand_image
 
 player_a = Player('p1', (100, 400))
 player_a.ang = 0 
@@ -75,15 +89,11 @@ def on_key_down(key):
         laser = player_a.fire()
         game.lasers.append(laser)
 
-    if player_b.image != player_b.stand_image:
-        player_b.image = player_b.stand_image
+    if key == keys.K_2:
+        game.shields.append(player_a.defending())
 
-    if player_b.image != player_b.stand_image:
-        player_b.image = player_b.stand_image
-
-    if key == keys.K_2:  # Placeholder for player B's attack
-        player_b.image = 'p2_jump'  # Ensure this image exists
-        player_a.take_damage()
+    player_a.reset_image()
+    player_b.reset_image()
 
 def update(dt):
     for laser in game.lasers:
@@ -99,6 +109,11 @@ def update(dt):
         for l in game.game_over_images:
             game.game_over.append(Actor(l, (WIDTH / 2 - 150 + i, HEIGHT / 2)))
             i += 50
+    for s in game.shields:
+        s.update()
+
+    if keyboard.q:
+        sys.exit()
 
 # Drawing
 cloud_pos = 200, 100
@@ -118,5 +133,7 @@ def draw():
         laser.draw()
     for l in game.game_over:
         l.draw()
+    for s in game.shields:
+        s.draw()
 
 pgzrun.go()
