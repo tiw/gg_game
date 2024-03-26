@@ -85,11 +85,6 @@ def on_key_down(key):
         player_b.image = 'p2_jump'  # Ensure this image exists
         player_a.take_damage()
 
-def on_key_up(key):
-    time.sleep(0.5)
-    player_a.image = 'p1_front'  # Reset image after key press
-    player_b.image = 'p2_front'
-
 def update(dt):
     for laser in game.lasers:
         laser.exact_pos += (laser.velocity * dt)
@@ -98,7 +93,6 @@ def update(dt):
             player_b.take_damage()
             game.lasers.remove(laser)
         laser.pos = laser.exact_pos.x % WIDTH, laser.exact_pos.y % HEIGHT
-
 
     if (player_a.blood == 0) or (player_b.blood == 0):
         i = 0
@@ -113,11 +107,10 @@ def draw():
     screen.blit('bg_desert', (0, 0))
     # let cloud move
     global cloud_pos
-    cloud_pos = (cloud_pos[0] + 5) % WIDTH, cloud_pos[1]
+    cloud_pos = (cloud_pos[0] + 2) % WIDTH, cloud_pos[1]
     screen.blit('cloud1', cloud_pos)
     player_a.draw()
     player_b.draw()
-    # game.game_over.draw()
     player_a.draw_hearts(80)
     player_b.draw_hearts(904)
 
