@@ -30,15 +30,13 @@ game = GameState()
 
 # Actors
 class Player(Actor):
-    def __init__(self, image, position, laser_image, fire_image, hurt_image):
-        super().__init__(image)
+    def __init__(self, name, position):
+        super().__init__(name+'_front')
+        self.image, self.laser_image, self.fire_image, self.hurt_image = [name + '_' + i for i in ['front', 'laser', 'jump', 'hurt']]
         self.blood = INIT_BLOOD
         self.hearts = []
         self.pos = position
-        self.fire_image = fire_image
-        self.laser_image = laser_image
-        self.hurt_image = hurt_image
-        self.stand_image = image
+        self.stand_image = self.image
 
     def draw_hearts(self, start_pos, step=15, heart_type='emote_heart'):
         for i in range(self.blood):
@@ -65,9 +63,9 @@ class Player(Actor):
         laser.velocity = Vector2(math.cos(ang), math.sin(ang)).normalize() * 300.0
         return laser
 
-player_a = Player('p1_front', (100, 400), 'p1_laser', 'p1_jump', 'p1_hurt')
+player_a = Player('p1', (100, 400))
 player_a.ang = 0 
-player_b = Player('p2_front', (924, 400), 'p2_laser', 'p2_jump', 'p2_hurt')
+player_b = Player('p2', (924, 400))
 player_b.ang = 180
 
 # Key handling
@@ -76,7 +74,6 @@ def on_key_down(key):
         # player_a.image = 'p1_jump'  # Ensure this image exists
         laser = player_a.fire()
         game.lasers.append(laser)
-        player_b.take_damage()
 
     if player_b.image != player_b.stand_image:
         player_b.image = player_b.stand_image
@@ -100,10 +97,6 @@ def update(dt):
         if c > -1:
             player_b.take_damage()
             game.lasers.remove(laser)
-            # time.sleep(0.5)
-            # player_b.image =  player_b.stand_image
-        # if laser.exact_pos.x < 0 or laser.exact_pos.x > WIDTH:
-        #     game.lasers.remove(laser)
         laser.pos = laser.exact_pos.x % WIDTH, laser.exact_pos.y % HEIGHT
 
 
