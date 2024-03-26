@@ -16,13 +16,15 @@ game = GameState()
 
 # Actors
 class Player(Actor):
-    def __init__(self, image, position, laser_image, fire_image):
+    def __init__(self, image, position, laser_image, fire_image, hurt_image):
         super().__init__(image)
         self.blood = INIT_BLOOD
         self.hearts = []
         self.pos = position
         self.fire_image = fire_image
         self.laser_image = laser_image
+        self.hurt_image = hurt_image
+        self.stand_image = image
 
     def draw_hearts(self, start_pos, step=15, heart_type='emote_heart'):
         for i in range(self.blood):
@@ -33,6 +35,7 @@ class Player(Actor):
             heart.draw()
 
     def take_damage(self, damage=1):
+        self.image = self.hurt_image
         if self.blood > 0:
             self.blood -= damage
 
@@ -46,9 +49,9 @@ class Player(Actor):
         laser.velocity = Vector2(math.cos(ang), math.sin(ang)).normalize() * 300.0
         return laser
 
-player_a = Player('p1_front', (100, 400), 'p1_laser', 'p1_jump')
+player_a = Player('p1_front', (100, 400), 'p1_laser', 'p1_jump', 'p1_hurt')
 player_a.ang = 0 
-player_b = Player('p2_front', (924, 400), 'p2_laser', 'p2_jump')
+player_b = Player('p2_front', (924, 400), 'p2_laser', 'p2_jump', 'p2_hurt')
 player_b.ang = 180
 
 # Key handling
@@ -58,6 +61,9 @@ def on_key_down(key):
         laser = player_a.fire()
         game.lasers.append(laser)
         # player_b.take_damage()
+
+    if player_b.image != player_b.stand_image:
+        player_b.image = player_b.stand_image
 
     if key == keys.K_2:  # Placeholder for player B's attack
         player_b.image = 'p2_jump'  # Ensure this image exists
@@ -75,6 +81,8 @@ def update(dt):
         if c > -1:
             player_b.take_damage()
             game.lasers.remove(laser)
+            # time.sleep(0.5)
+            # player_b.image =  player_b.stand_image
         # if laser.exact_pos.x < 0 or laser.exact_pos.x > WIDTH:
         #     game.lasers.remove(laser)
         laser.pos = laser.exact_pos.x % WIDTH, laser.exact_pos.y % HEIGHT
