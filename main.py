@@ -12,6 +12,7 @@ INIT_BLOOD = 5
 
 class GameState():
     lasers = []
+    enemy_lasers = []
     shields = []
     game_over = []
     game_over_images = ['keyboard_g_outline', 'keyboard_a_outline', 'keyboard_m_outline', 'keyboard_e_outline', 
@@ -66,7 +67,7 @@ class Player(Actor):
         laser = Actor(self.laser_image, laser_pos)
         laser.angle = -90
         laser.exact_pos = laser.start_pos = Vector2(self.pos)
-        laser.velocity = Vector2(math.cos(ang), math.sin(ang)).normalize() * 300.0
+        laser.velocity = Vector2(math.cos(ang), math.sin(ang)).normalize() * 400.0
         return laser
     
     def defending(self):
@@ -92,16 +93,37 @@ def on_key_down(key):
     if key == keys.K_2:
         game.shields.append(player_a.defending())
 
+    if key == keys.K_3:
+        # player_b.image = 'p2_jump'  # Ensure this image exists
+        laser = player_b.fire()
+        game.enemy_lasers.append(laser)
+    if key == keys.K_4:
+        game.shields.append(player_b.defending())
     player_a.reset_image()
     player_b.reset_image()
 
 def update(dt):
     for laser in game.lasers:
         laser.exact_pos += (laser.velocity * dt)
+        s = laser.collidelist(game.shields)
+        if s > -1:
+            game.lasers.remove(laser)  
         c = laser.collidelist([player_b])
         if c > -1:
             player_b.take_damage()
             game.lasers.remove(laser)
+        laser.pos = laser.exact_pos.x % WIDTH, laser.exact_pos.y % HEIGHT
+
+    for laser in game.enemy_lasers:
+        laser.angle = 90
+        laser.exact_pos.x = laser.exact_pos.x - 10 
+        s = laser.collidelist(game.shields)
+        if s > -1:
+            game.enemy_lasers.remove(laser)  
+        c = laser.collidelist([player_a])
+        if c > -1:
+            player_a.take_damage()
+            game.enemy_lasers.remove(laser)
         laser.pos = laser.exact_pos.x % WIDTH, laser.exact_pos.y % HEIGHT
 
     if (player_a.blood == 0) or (player_b.blood == 0):
@@ -130,6 +152,8 @@ def draw():
     player_b.draw_hearts(904)
 
     for laser in game.lasers:
+        laser.draw()
+    for laser in game.enemy_lasers:
         laser.draw()
     for l in game.game_over:
         l.draw()
