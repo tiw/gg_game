@@ -15,6 +15,7 @@ class GameState():
     lasers = []
     bees = []
     enemy_lasers = []
+    enemy_bees = []
     shields = []
     game_over = []
     game_over_images = ['keyboard_g_outline', 'keyboard_a_outline', 'keyboard_m_outline', 'keyboard_e_outline', 
@@ -137,13 +138,15 @@ def on_key_down(key):
         bee = player_a.ult()
         game.bees.append(bee)
     if key == keys.K_8:
-        player_b.ult()       
+        bee = player_b.ult()
+        game.enemy_bees.append(bee)
+          
     # player_a.reset_image()
     # player_b.reset_image()
 
 def update(dt):
     for laser in game.lasers:
-        laser.exact_pos += (laser.velocity * dt)
+        laser.exact_pos.x = laser.exact_pos.x + 10
         s = laser.collidelist(game.shields)
         if s > -1:
             game.lasers.remove(laser)  
@@ -165,8 +168,17 @@ def update(dt):
             game.enemy_lasers.remove(laser)
         laser.pos = laser.exact_pos.x % WIDTH, laser.exact_pos.y % HEIGHT
 
+    for bee in game.enemy_bees:
+        bee.angle = 90
+        bee.exact_pos.x = bee.exact_pos.x - 10
+        c = bee.collidelist([player_a])
+        if c > -1:
+            player_a.take_damage(damage=2)
+            game.enemy_bees.remove(bee)
+        bee.pos = bee.exact_pos.x % WIDTH, bee.exact_pos.y % HEIGHT
+
     for bee in game.bees:
-        bee.exact_pos += (bee.velocity * dt)
+        bee.exact_pos.x = bee.exact_pos.x + 10
               
         c = bee.collidelist([player_b])
         if c > -1:
@@ -184,8 +196,7 @@ def update(dt):
 
     if keyboard.q:
         sys.exit()
-
-
+   
 # Drawing
 cloud_pos = 200, 100
 
@@ -206,6 +217,8 @@ def draw():
         laser.draw()
     for laser in game.enemy_lasers:
         laser.draw()
+    for bee in game.enemy_bees:
+        bee.draw() 
     for l in game.game_over:
         l.draw()
     for s in game.shields:
