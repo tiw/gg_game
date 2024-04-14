@@ -152,6 +152,7 @@ def on_key_down(key):
             if bee:
                 game.enemy_bees.append(bee)
     else:
+        print('key:', key)
         at_main_game = True
           
         # player_a.reset_image()
@@ -215,11 +216,15 @@ def update(dt):
             game.bees.remove(bee)
         bee.pos = bee.exact_pos.x % WIDTH, bee.exact_pos.y % HEIGHT
 
-    if (player_a.blood == 0) or (player_b.blood == 0):
+    if (player_a.blood <= 0) or (player_b.blood <= 0):
         i = 0
         for l in game.game_over_images:
             game.game_over.append(Actor(l, (WIDTH / 2 - 150 + i, HEIGHT / 2)))
             i += 50
+        global at_main_game
+        at_main_game = False
+        
+
     for s in game.shields:
         s.update()
 
@@ -283,6 +288,7 @@ def show_welcome_screen():
 def draw():
     show_welcome_screen()
     if at_main_game:
+        print('at_main_game')
         show_main_game()
 
 
