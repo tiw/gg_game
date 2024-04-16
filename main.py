@@ -9,13 +9,17 @@ import sys
 WIDTH = 1024
 HEIGHT = 512
 INIT_BLOOD = 5
+at_main_game = False
 
+font = pygame.font.Font('fonts/zh.ttf' , 60)
 
 class GameState():
     lasers = []
     bees = []
     enemy_lasers = []
     enemy_bees = []
+    qi = []
+    
     shields = []
     game_over = []
     game_over_images = ['keyboard_g_outline', 'keyboard_a_outline', 'keyboard_m_outline', 'keyboard_e_outline', 
@@ -48,6 +52,7 @@ class Player(Actor):
         self.bee_image = "bee_move"
         self.blood = INIT_BLOOD
         self.hearts = []
+        self.pi = 0
         self.pos = position
         self.stand_image = self.image
 
@@ -89,23 +94,25 @@ class Player(Actor):
     def gather(self):
         self.image = self.gather_image 
         print(self.image)
+        self.pi += 1
 
     # 大招
     def ult(self):
-        self.image = self.fire_image
-        bee_pos = (self.pos[0] + 50, self.pos[1])
-        ang = self.ang
-        bee = Actor(self.bee_image, bee_pos)
-        bee.angle = 90
-        bee.exact_pos = bee.start_pos = Vector2(self.pos)
-        bee.velocity = Vector2(math.cos(ang), math.sin(ang)).normalize() * 400.0
-        return bee 
+        if(self.pi >= 2):
+            self.image = self.fire_image
+            bee_pos = (self.pos[0] + 50, self.pos[1])
+            ang = self.ang
+            bee = Actor(self.bee_image, bee_pos)
+            bee.angle = 90
+            bee.exact_pos = bee.start_pos = Vector2(self.pos)
+            bee.velocity = Vector2(math.cos(ang), math.sin(ang)).normalize() * 400.0
+            self.pi  -= 2
+            return bee 
 
     # 让小人恢复站立的姿势
     def reset_image(self):
         if self.image != self.stand_image:
             self.image = self.stand_image
-
 
 player_a = Player('p1', (100, 400))
 player_a.ang = 0 
@@ -114,43 +121,52 @@ player_b.ang = 180
 
 # Key handling
 def on_key_down(key):
-    if key == keys.K_1:
-        # player_a.image = 'p1_jump'  # Ensure this image exists
-        laser = player_a.fire()
-        game.lasers.append(laser)
+    global at_main_game
+    if at_main_game:
+        if key == keys.K_1:
+            # player_a.image = 'p1_jump'  # Ensure this image exists
+            laser = player_a.fire()
+            game.lasers.append(laser)
 
-    if key == keys.K_2:
-        game.shields.append(player_a.defending())
+        if key == keys.K_2:
+            game.shields.append(player_a.defending())
 
-    if key == keys.K_3:
-        # player_b.image = 'p2_jump'  # Ensure this image exists
-        laser = player_b.fire()
-        game.enemy_lasers.append(laser)
-    if key == keys.K_4:
-        game.shields.append(player_b.defending())
+        if key == keys.K_0:
+            # player_b.image = 'p2_jump'  # Ensure this image exists
+            laser = player_b.fire()
+            game.enemy_lasers.append(laser)
+        if key == keys.K_9:
+            game.shields.append(player_b.defending())
 
-    if key == keys.K_5:
-        player_a.gather()
+        if key == keys.K_3:
+            player_a.gather()
     
-    if key == keys.K_6:
-        player_b.gather()
-    if key == keys.K_7:
-        bee = player_a.ult()
-        game.bees.append(bee)
-    if key == keys.K_8:
-        bee = player_b.ult()
-        game.enemy_bees.append(bee)
+        if key == keys.K_8:
+            player_b.gather()
+        if key == keys.K_4:
+            bee = player_a.ult()
+            if bee:
+                game.bees.append(bee)
+        if key == keys.K_7:
+            bee = player_b.ult()
+            if bee:
+                game.enemy_bees.append(bee)
+    else:
+        print('key:', key)
+        at_main_game = True
           
-    # player_a.reset_image()
-    # player_b.reset_image()
+        # player_a.reset_image()
+        # player_b.reset_image()
 
 def update(dt):
     for laser in game.lasers:
         laser.exact_pos.x = laser.exact_pos.x + 10
         s = laser.collidelist(game.shields)
-        if s > -1:
+        z = laser.collidelist(game.enemy_lasers)
+        if s > -1 or z > -1:
             game.lasers.remove(laser)  
         c = laser.collidelist([player_b])
+
         if c > -1:
             player_b.take_damage()
             game.lasers.remove(laser)
@@ -160,7 +176,10 @@ def update(dt):
         laser.angle = 90
         laser.exact_pos.x = laser.exact_pos.x - 10 
         s = laser.collidelist(game.shields)
-        if s > -1:
+
+        z = laser.collidelist(game.lasers)
+
+        if s > -1 or z > -1:
             game.enemy_lasers.remove(laser)  
         c = laser.collidelist([player_a])
         if c > -1:
@@ -172,6 +191,11 @@ def update(dt):
         bee.angle = 90
         bee.exact_pos.x = bee.exact_pos.x - 10
         c = bee.collidelist([player_a])
+        s = bee.collidelist(game.bees)
+        if s > -1:
+            game.enemy_bees.remove(bee)
+        c = bee.collidelist([player_a])
+
         if c > -1:
             player_a.take_damage(damage=2)
             game.enemy_bees.remove(bee)
@@ -181,16 +205,26 @@ def update(dt):
         bee.exact_pos.x = bee.exact_pos.x + 10
               
         c = bee.collidelist([player_b])
+
+        z = bee.collidelist(game.enemy_bees)    
+       
+        if z > -1:
+            game.bees.remove(bee)
+        c = bee.collidelist([player_b])
         if c > -1:
             player_b.take_damage(damage=2)
             game.bees.remove(bee)
         bee.pos = bee.exact_pos.x % WIDTH, bee.exact_pos.y % HEIGHT
 
-    if (player_a.blood == 0) or (player_b.blood == 0):
+    if (player_a.blood <= 0) or (player_b.blood <= 0):
         i = 0
         for l in game.game_over_images:
             game.game_over.append(Actor(l, (WIDTH / 2 - 150 + i, HEIGHT / 2)))
             i += 50
+        global at_main_game
+        at_main_game = False
+        
+
     for s in game.shields:
         s.update()
 
@@ -201,7 +235,8 @@ def update(dt):
 cloud_pos = 200, 100
 
 
-def draw():
+# 游戏主界面
+def show_main_game():
     screen.clear()
     screen.blit('bg_desert', (0, 0))
     # let cloud move
@@ -225,6 +260,36 @@ def draw():
         s.draw()
     for bee in game.bees:
         bee.draw()
+
+
+# 欢迎界面
+def show_welcome_screen():
+    screen.clear()
+    bg_image = 'purple'
+
+    # 获取背景图像的大小
+    bg_width, bg_height = images.load(bg_image).get_size()
+
+    # 计算需要绘制的行数和列数
+    rows = HEIGHT // bg_height + 1
+    cols = WIDTH // bg_width + 1
+
+    # 在每个位置绘制背景图像
+    for y in range(rows):
+        for x in range(cols):
+            screen.blit(bg_image, (x * bg_width, y * bg_height))
+    # screen.blit('purple', (0, 0))
+    welcome_surface = font.render("欢迎来到游戏", True, (0, 0, 0))
+    begin_surface = font.render("按任意键开始游戏", True, (0, 0, 0))
+    screen.blit(welcome_surface, (WIDTH / 2, HEIGHT / 2))
+    screen.blit(begin_surface, (WIDTH / 2, HEIGHT / 2 + 50))
+
+
+def draw():
+    show_welcome_screen()
+    if at_main_game:
+        print('at_main_game')
+        show_main_game()
 
 
 pgzrun.go()
