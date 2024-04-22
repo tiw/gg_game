@@ -247,19 +247,22 @@ def show_main_game():
     player_b.draw()
     player_a.draw_hearts(80)
     player_b.draw_hearts(904)
+    for laser_list in [game.lasers, game.enemy_lasers, game.bees, game.enemy_bees]:
+        for item in laser_list:
+            item.draw()
 
-    for laser in game.lasers:
-        laser.draw()
-    for laser in game.enemy_lasers:
-        laser.draw()
-    for bee in game.enemy_bees:
-        bee.draw() 
+    # for laser in game.lasers:
+    #     laser.draw()
+    # for laser in game.enemy_lasers:
+    #     laser.draw()
+    # for bee in game.enemy_bees:
+    #     bee.draw() 
+    # for bee in game.bees:
+    #     bee.draw()
     for l in game.game_over:
         l.draw()
     for s in game.shields:
         s.draw()
-    for bee in game.bees:
-        bee.draw()
 
 
 # 欢迎界面
