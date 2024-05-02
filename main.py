@@ -10,6 +10,7 @@ WIDTH = 1024
 HEIGHT = 512
 INIT_BLOOD = 5
 at_main_game = False
+game_over = False
 
 font = pygame.font.Font('fonts/zh.ttf' , 60)
 
@@ -27,6 +28,18 @@ class GameState():
 
 
 game = GameState()
+
+def reset_game():
+    global game
+    global player_a, player_b
+    player_a = Player('p1', (100, 400))
+    player_a.ang = 0 
+    player_b = Player('p2', (924, 400))
+    player_b.ang = 180
+    game = GameState()
+    game.game_over = []
+
+
 # 自定义的 Actor 子类，添加自动消失的功能
 class TimedActor(Actor):
     def __init__(self, image, pos, disappear_after=2):
@@ -152,13 +165,19 @@ def on_key_down(key):
             if bee:
                 game.enemy_bees.append(bee)
     else:
-        print('key:', key)
+        print('================================================================key:', key)
         at_main_game = True
           
         # player_a.reset_image()
         # player_b.reset_image()
 
 def update(dt):
+    global game_over
+    if game_over:
+        at_main_game = False
+        reset_game()
+        game_over = False
+
     for laser in game.lasers:
         laser.exact_pos.x = laser.exact_pos.x + 10
         s = laser.collidelist(game.shields)
@@ -221,8 +240,8 @@ def update(dt):
         for l in game.game_over_images:
             game.game_over.append(Actor(l, (WIDTH / 2 - 150 + i, HEIGHT / 2)))
             i += 50
-        global at_main_game
-        at_main_game = False
+        game_over = True
+        
         
 
     for s in game.shields:
@@ -286,6 +305,9 @@ def show_welcome_screen():
 
 
 def draw():
+    global at_main_game
+    print("at draw()")
+    print(at_main_game)
     show_welcome_screen()
     if at_main_game:
         print('at_main_game')
