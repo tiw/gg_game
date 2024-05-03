@@ -173,9 +173,13 @@ def on_key_down(key):
             if bee:
                 game.enemy_bees.append(bee)
         
-        # push key "s" let player jump
+        # push key "s" let player a jump
         if key == pygame.K_s:
            player_a.jump()
+
+        # push key "l" let player b jump
+        if key == pygame.K_l:
+            player_b.jump()
     else:
         # print('================================================================key:', key)
         at_main_game = True
@@ -194,9 +198,9 @@ def update(dt):
     for p in [player_a, player_b]:
         if p.jump_flag == 1:
             p.velocity['y'] += GRAVITY
-            print(f"***{p.velocity['y']}***")
+            # print(f"***{p.velocity['y']}***")
             p.y += p.velocity['y']
-            print(p.y)
+            # print(p.y)
         if p.y > 400:
             p.y = 400
             p.velocity['y'] = -10
@@ -207,7 +211,8 @@ def update(dt):
         laser.exact_pos.x = laser.exact_pos.x + 10
         s = laser.collidelist(game.shields)
         z = laser.collidelist(game.enemy_lasers)
-        if s > -1 or z > -1:
+        out_of_frame = laser.exact_pos.x > WIDTH
+        if s > -1 or z > -1 or out_of_frame:
             game.lasers.remove(laser)  
         c = laser.collidelist([player_b])
 
@@ -222,8 +227,9 @@ def update(dt):
         s = laser.collidelist(game.shields)
 
         z = laser.collidelist(game.lasers)
+        out_of_frame = laser.exact_pos.x < 0
 
-        if s > -1 or z > -1:
+        if s > -1 or z > -1 or out_of_frame:
             game.enemy_lasers.remove(laser)  
         c = laser.collidelist([player_a])
         if c > -1:
