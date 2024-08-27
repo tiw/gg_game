@@ -9,7 +9,9 @@ import sys
 WIDTH = 1024
 HEIGHT = 512
 INIT_BLOOD = 5
+GRAVITY = 0.5
 at_main_game = False
+game_over = False
 
 font = pygame.font.Font('fonts/zh.ttf' , 60)
 
@@ -27,6 +29,18 @@ class GameState():
 
 
 game = GameState()
+
+def reset_game():
+    global game
+    global player_a, player_b
+    player_a = Player('p1', (100, 400))
+    player_a.ang = 0 
+    player_b = Player('p2', (924, 400))
+    player_b.ang = 180
+    game = GameState()
+    game.game_over = []
+
+
 # 自定义的 Actor 子类，添加自动消失的功能
 class TimedActor(Actor):
     def __init__(self, image, pos, disappear_after=2):
@@ -55,6 +69,10 @@ class Player(Actor):
         self.pi = 0
         self.pos = position
         self.stand_image = self.image
+        self.jump_flag = 0
+        self.velocity = {}
+        self.velocity['x'] = 0
+        self.velocity['y'] = -10
 
 
     # 画出玩家血量
@@ -93,7 +111,7 @@ class Player(Actor):
     # 集气
     def gather(self):
         self.image = self.gather_image 
-        print(self.image)
+        # print(self.image)
         self.pi += 1
 
     # 大招
@@ -111,9 +129,12 @@ class Player(Actor):
 
     # 让小人恢复站立的姿势
     def reset_image(self):
-        if self.image != self.stand_image:
+        if self.image != self.stand_image:  
             self.image = self.stand_image
-
+    #跳
+    def jump(self):
+        self.jump_flag = 1
+        
 player_a = Player('p1', (100, 400))
 player_a.ang = 0 
 player_b = Player('p2', (924, 400))
@@ -151,19 +172,47 @@ def on_key_down(key):
             bee = player_b.ult()
             if bee:
                 game.enemy_bees.append(bee)
+        
+        # push key "s" let player a jump
+        if key == pygame.K_s:
+           player_a.jump()
+
+        # push key "l" let player b jump
+        if key == pygame.K_l:
+            player_b.jump()
     else:
-        print('key:', key)
+        # print('================================================================key:', key)
         at_main_game = True
           
         # player_a.reset_image()
         # player_b.reset_image()
 
 def update(dt):
+    global game_over
+    if game_over:
+        at_main_game = False
+        reset_game()
+        game_over = False
+    
+    global GRAVITY
+    for p in [player_a, player_b]:
+        if p.jump_flag == 1:
+            p.velocity['y'] += GRAVITY
+            # print(f"***{p.velocity['y']}***")
+            p.y += p.velocity['y']
+            # print(p.y)
+        if p.y > 400:
+            p.y = 400
+            p.velocity['y'] = -10
+            p.jump_flag = 0
+        
+
     for laser in game.lasers:
         laser.exact_pos.x = laser.exact_pos.x + 10
         s = laser.collidelist(game.shields)
         z = laser.collidelist(game.enemy_lasers)
-        if s > -1 or z > -1:
+        out_of_frame = laser.exact_pos.x > WIDTH
+        if s > -1 or z > -1 or out_of_frame:
             game.lasers.remove(laser)  
         c = laser.collidelist([player_b])
 
@@ -178,8 +227,9 @@ def update(dt):
         s = laser.collidelist(game.shields)
 
         z = laser.collidelist(game.lasers)
+        out_of_frame = laser.exact_pos.x < 0
 
-        if s > -1 or z > -1:
+        if s > -1 or z > -1 or out_of_frame:
             game.enemy_lasers.remove(laser)  
         c = laser.collidelist([player_a])
         if c > -1:
@@ -221,8 +271,8 @@ def update(dt):
         for l in game.game_over_images:
             game.game_over.append(Actor(l, (WIDTH / 2 - 150 + i, HEIGHT / 2)))
             i += 50
-        global at_main_game
-        at_main_game = False
+        game_over = True
+        
         
 
     for s in game.shields:
@@ -286,9 +336,12 @@ def show_welcome_screen():
 
 
 def draw():
+    global at_main_game
+    # print("at draw()")
+    # print(at_main_game)
     show_welcome_screen()
     if at_main_game:
-        print('at_main_game')
+        # print('at_main_game')
         show_main_game()
 
 
