@@ -20,9 +20,6 @@ def download_nltk_data():
 # 确保NLTK数据被下载
 download_nltk_data()
 
-# 设置每天阅读的单词数
-DAILY_WORD_COUNT = 200
-
 # 获取英语常用词集合
 english_words = set(w.lower() for w in nltk_words.words())
 
@@ -52,6 +49,30 @@ def analyze_sentence(sentence):
     difficult_words = [(word, get_word_definition(word)) for word in words if is_difficult_word(word)]
     return difficult_words
 
+def find_start_of_content(content):
+    # 查找正文开始的标记
+    content_patterns = [
+        r"\bCHAPTER I\.?\b",
+        r"\bCHAPTER 1\.?\b",
+        r"\bCHAPTER ONE\.?\b",
+        r"\bI\.?\b",  # 匹配罗马数字 I
+        r"\b1\.?\b",  # 匹配阿拉伯数字 1
+    ]
+    
+    for pattern in content_patterns:
+        match = re.search(pattern, content, re.IGNORECASE)
+        if match:
+            # 找到章节标记后，向前查找最近的段落开始
+            paragraph_start = content.rfind('\n\n', 0, match.start())
+            if paragraph_start != -1:
+                return paragraph_start + 2  # +2 to skip the newline characters
+            else:
+                return match.start()
+    
+    # 如果没有找到 "Chapter I" 或类似标记，返回 0（从头开始）
+    print("警告：未找到 'Chapter I' 或类似的章节标记。从文件开头开始阅读。")
+    return 0
+
 def read_book(book_path):
     book_title = os.path.splitext(os.path.basename(book_path))[0]
     with open(book_path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -64,19 +85,29 @@ def read_book(book_path):
     if progress["last_read_date"] != today:
         current_position = 0
     
-    words = word_tokenize(content[current_position:])
-    daily_content = " ".join(words[:DAILY_WORD_COUNT])
-    sentences = sent_tokenize(daily_content)
+    if current_position == 0:
+        current_position = find_start_of_content(content)
+    
+    paragraphs = content[current_position:].split('\n\n')
+    daily_content = ""
+    paragraphs_read = 0
+    
+    while len(daily_content) < 200 and paragraphs_read < len(paragraphs):
+        daily_content += paragraphs[paragraphs_read] + "\n\n"
+        paragraphs_read += 1
     
     print(f"今天的阅读内容 ({len(word_tokenize(daily_content))} 词):\n")
+    print(daily_content)
+    print()
+    
+    sentences = sent_tokenize(daily_content)
     for sentence in sentences:
-        print(sentence)
         difficult_words = analyze_sentence(sentence)
         if difficult_words:
             print("难词:")
             for word, definition in difficult_words:
                 print(f"  {word}: {definition}")
-        print()
+    print()
     
     progress["current_position"] = current_position + len(daily_content)
     progress["last_read_date"] = today
