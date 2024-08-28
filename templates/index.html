@@ -90,6 +90,60 @@
             font-style: italic;
             color: var(--green);
         }
+        .tab-header {
+            display: flex;
+            border-bottom: 1px solid var(--blue);
+        }
+
+        .tab-button {
+            background-color: var(--background);
+            color: var(--foreground);
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .tab-button.active {
+            background-color: var(--blue);
+            color: var(--background);
+        }
+
+        .tab-content {
+            display: none;
+            padding: 20px;
+            background-color: rgba(29, 31, 33, 0.7);
+            border-radius: 0 0 5px 5px;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        #summary-input {
+            width: 100%;
+            height: 100px;
+            margin-bottom: 10px;
+            background-color: var(--background);
+            color: var(--foreground);
+            border: 1px solid var(--blue);
+            border-radius: 4px;
+            padding: 10px;
+        }
+
+        .loader {
+            border: 5px solid var(--background);
+            border-top: 5px solid var(--blue);
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -102,10 +156,25 @@
         </select>
         <button onclick="readBook()">开始阅读</button>
         <div id="content"></div>
-        <div id="analysis"></div>
+        <div id="tabs">
+            <div class="tab-header">
+                <button class="tab-button active" onclick="openTab('difficult-words')">难词</button>
+                <button class="tab-button" onclick="openTab('summary')">复述</button>
+            </div>
+            <div id="difficult-words" class="tab-content active">
+                <div id="analysis"></div>
+            </div>
+            <div id="summary" class="tab-content">
+                <textarea id="summary-input" placeholder="请在这里输入您对文章的理解..."></textarea>
+                <button onclick="submitSummary()">提交复述</button>
+                <div id="summary-feedback"></div>
+            </div>
+        </div>
     </div>
 
     <script>
+        let currentContent = ""; // 添加这行在脚本开始处
+
         function escapeRegExp(string) {
             return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         }
@@ -118,24 +187,21 @@
                 const escapedWord = escapeRegExp(word.word);
                 const regex = new RegExp(`\\b${escapedWord}\\b`, 'gi');
                 let match;
-                let tempContent = highlightedContent;
+                let lastIndex = 0;
                 let offset = 0;
 
-                while ((match = regex.exec(tempContent)) !== null) {
+                while ((match = regex.exec(content)) !== null) {
                     if (!wordPositions[word.id]) {
                         wordPositions[word.id] = [];
                     }
-                    const realPosition = offset + match.index;
-                    wordPositions[word.id].push(realPosition);
+                    wordPositions[word.id].push(match.index);
 
-                    const before = highlightedContent.slice(0, realPosition);
-                    const after = highlightedContent.slice(realPosition + match[0].length);
-                    const replacement = `<span class="highlight" onclick="scrollToWord('${word.id}')">${match[0]}</span>`;
+                    const before = highlightedContent.slice(0, match.index + offset);
+                    const after = highlightedContent.slice(match.index + offset + word.word.length);
+                    const replacement = `<span class="highlight" data-word-id="${word.id}">${word.word}</span>`;
 
                     highlightedContent = before + replacement + after;
-
-                    offset = before.length + replacement.length;
-                    tempContent = after;
+                    offset += replacement.length - word.word.length;
                 }
             });
 
@@ -148,8 +214,18 @@
             return tempElement.textContent.length;
         }
 
+        function escapeHtml(unsafe) {
+            return unsafe
+                 .replace(/&/g, "&amp;")
+                 .replace(/</g, "&lt;")
+                 .replace(/>/g, "&gt;")
+                 .replace(/"/g, "&quot;")
+                 .replace(/'/g, "&#039;");
+        }
+
         function updateContent(content, wordCount, difficultWords) {
             content = cleanText(content);  // 清理文本，但保留换行符
+            content = escapeHtml(content);  // 转义HTML特殊字符
             const { highlightedContent, wordPositions } = highlightDifficultWords(content, difficultWords);
             
             // 将换行符转换为HTML的<br>标签
@@ -159,6 +235,15 @@
                 <h2>今天的阅读内容 (${wordCount} 词):</h2>
                 <p>${formattedContent}</p>
             `;
+
+            // 添加点击事件监听器
+            document.querySelectorAll('#content .highlight').forEach(span => {
+                span.addEventListener('click', function() {
+                    const wordId = this.getAttribute('data-word-id');
+                    scrollToWord(wordId);
+                });
+            });
+
             return wordPositions;
         }
 
@@ -167,9 +252,13 @@
                 document.getElementById('analysis').innerHTML = `<p>分析错误: ${analysis.error}</p>`;
                 return;
             }
+            if (!analysis.words || !Array.isArray(analysis.words)) {
+                document.getElementById('analysis').innerHTML = `<p>分析结果格式错误</p>`;
+                return;
+            }
             const analysisHtml = analysis.words.map(word => `
                 <div class="word-item" id="${word.id}">
-                    <div class="word" onclick="highlightInContent('${word.word}', ${JSON.stringify(wordPositions[word.id])})">${word.word}</div>
+                    <div class="word" onclick="highlightInContent('${word.word}', ${JSON.stringify(wordPositions[word.id] || [])})">${word.word}</div>
                     <div class="explanation">
                         <strong>中文解释:</strong> ${word.chinese_explanation}<br>
                         <strong>英文解释:</strong> ${word.english_explanation}<br>
@@ -259,6 +348,7 @@
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
             })
             .then(function (response) {
+                currentContent = response.data.content; // 保存当前内容
                 const wordPositions = updateContent(response.data.content, response.data.word_count, response.data.analysis.words);
                 updateAnalysis(response.data.analysis, wordPositions);
             })
@@ -268,8 +358,66 @@
         }
 
         function cleanText(text) {
-            // 只保留ASCII字符和换行符
-            return text.replace(/[^\x00-\x7F\n]/g, '');
+            // 只移除不可打印的ASCII字符，保留换行符和HTML标签
+            return text.replace(/[^\x20-\x7E\n<>]/g, '');
+        }
+
+        function openTab(tabName) {
+            const tabContents = document.getElementsByClassName("tab-content");
+            for (let i = 0; i < tabContents.length; i++) {
+                tabContents[i].classList.remove("active");
+            }
+            const tabButtons = document.getElementsByClassName("tab-button");
+            for (let i = 0; i < tabButtons.length; i++) {
+                tabButtons[i].classList.remove("active");
+            }
+            document.getElementById(tabName).classList.add("active");
+            event.currentTarget.classList.add("active");
+        }
+
+        function submitSummary() {
+            const summary = document.getElementById("summary-input").value;
+            const originalContent = currentContent; // 使用保存的当前内容
+            const feedbackElement = document.getElementById("summary-feedback");
+
+            // 显示加载指示器
+            feedbackElement.innerHTML = '<div class="loader"></div>';
+
+            axios.post('/evaluate_summary', {
+                original_text: originalContent,
+                summary: summary
+            })
+            .then(function (response) {
+                const evaluation = response.data;
+                let feedbackHtml = `
+                    <h3>复述评价</h3>
+                    <p><strong>总体评价：</strong>${evaluation.evaluation || '未提供'}</p>
+                    <p><strong>内容准确性：</strong>${evaluation.accuracy || '未提供'}</p>
+                    <p><strong>主要观点覆盖度：</strong>${evaluation.coverage || '未提供'}</p>
+                    <p><strong>语言表达流畅性：</strong>${evaluation.fluency || '未提供'}</p>
+                    <p><strong>逻辑结构：</strong>${evaluation.structure || '未提供'}</p>
+                    <h4>改进建议：</h4>
+                    <p>${evaluation.suggestions || '未提供改进建议'}</p>
+                `;
+
+                if (evaluation.example_summary) {
+                    feedbackHtml += `
+                        <h4>复述范文：</h4>
+                        <p>${evaluation.example_summary}</p>
+                    `;
+                } else {
+                    feedbackHtml += `
+                        <h4>复述范文：</h4>
+                        <p>抱歉，未能生成复述范文。</p>
+                    `;
+                }
+
+                feedbackElement.innerHTML = feedbackHtml;
+            })
+            .catch(function (error) {
+                console.error('Error:', error);
+                feedbackElement.innerHTML = "评价复述时出错，请稍后再试。错误详情：" + (error.response?.data?.error || error.message);
+            });
         }
     </script>
 </body>

@@ -9,8 +9,14 @@ import uuid
 
 # 导入之前的函数
 from reader_assis import load_progress, save_progress, find_start_of_content
-import nltk
-nltk.download('punkt')
+
+# 检查 NLTK 数据是否已下载
+nltk_data_path = os.path.expanduser("~/nltk_data")
+if not os.path.exists(os.path.join(nltk_data_path, "tokenizers", "punkt")):
+    print("首次运行，正在下载 NLTK 数据...")
+    nltk.download('punkt', quiet=True)
+    print("NLTK 数据下载完成。")
+
 app = Flask(__name__)
 
 # 加载环境变量
@@ -18,6 +24,26 @@ load_dotenv()
 
 # 初始化dashscope客户端
 Generation.api_key = os.getenv("DASHSCOPE_API_KEY")
+
+def clean_and_parse_json(json_string):
+    # 使用正则表达式提取JSON部分
+    json_match = re.search(r'\{[\s\S]*\}', json_string)
+    if json_match:
+        json_str = json_match.group(0)
+        # 移除多余的逗号
+        json_str = re.sub(r',\s*}', '}', json_str)
+        json_str = re.sub(r',\s*]', ']', json_str)
+        
+        # 确保所有的键都有双引号
+        json_str = re.sub(r'(\w+):', r'"\1":', json_str)
+        
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError as e:
+            print(f"JSON解析错误: {e}")
+            return {"error": f"无法解析分析结果: {e}"}
+    else:
+        return {"error": "无法从返回结果中提取JSON"}
 
 def analyze_text(text):
     try:
@@ -33,7 +59,7 @@ def analyze_text(text):
                         "english_explanation": "explain in english",
                         "example": "例句"
                     }},
-                    // 更词...
+                    // 更多词...
                 ]
             }}
             
@@ -45,22 +71,14 @@ def analyze_text(text):
             result = response.output.text.strip()
             print("通义千问返回的分析结果：", result)
             
-            # 使用正则表达式提取JSON部分
-            json_match = re.search(r'\{[\s\S]*\}', result)
-            if json_match:
-                json_str = json_match.group(0)
-                data = json.loads(json_str)
+            data = clean_and_parse_json(result)
+            if "error" not in data:
                 for i, word_info in enumerate(data['words']):
                     word_info['id'] = f"word_{i}"
-                return data
-            else:
-                return {"error": f"无法从返回结果中提取JSON: {result[:100]}..."}
+            return data
         else:
-            print(f"分析文本时出错: {response.status_code}")
+            print(f"分析文时出错: {response.status_code}")
             return {"error": f"无法获取分析结果: {response.status_code}"}
-    except json.JSONDecodeError as e:
-        print(f"JSON解析错误: {e}")
-        return {"error": f"JSON解析错误: {e}"}
     except Exception as e:
         print(f"分析文本时出错: {e}")
         return {"error": f"分析文本失败: {str(e)}"}
@@ -128,10 +146,6 @@ def clean_text(text):
     # 只保留ASCII字符和换行符
     text = ''.join(char for char in text if ord(char) < 128 or char == '\n')
     
-    # # 使用正则表达式移除多余的空白字符，但保留段落结构
-    # text = re.sub(r'\s+', ' ', text)
-    # text = re.sub(r'\n\s*\n', '\n\n', text)
-    
     # 清理每个段落,但保留段落结构
     paragraphs = text.split('\n\n')
     cleaned_paragraphs = []
@@ -145,5 +159,82 @@ def clean_text(text):
     # 使用两个换行符重新连接段落
     return '\n\n'.join(cleaned_paragraphs)
 
+@app.route('/evaluate_summary', methods=['POST'])
+def evaluate_summary():
+    data = request.json
+    original_text = data.get('original_text')
+    summary = data.get('summary')
+
+    if not original_text or not summary:
+        return jsonify({"error": "缺少原文或复述内容"}), 400
+
+    try:
+        # 第一次调用：评价复述
+        evaluation_response = Generation.call(
+            model='qwen-turbo',
+            prompt=f"""请评价以下复述内容，并给出改进建议。
+
+原文：
+{original_text}
+
+复述：
+{summary}
+
+请从以下几个方面进行评价：
+1. 内容准确性
+2. 主要观点的覆盖程度
+3. 语言表达的流畅性
+4. 逻辑结构
+
+请以JSON格式返回结果，格式如下：
+{{
+    "evaluation": "总体评价",
+    "accuracy": "内容准确性评价",
+    "coverage": "主要观点覆盖程度评价",
+    "fluency": "语言表达流畅性评价",
+    "structure": "逻辑结构评价",
+    "suggestions": "改进建议"
+}}
+""",
+            max_tokens=1000
+        )
+
+        if evaluation_response.status_code != 200:
+            return jsonify({"error": f"无法获取评价结果: {evaluation_response.status_code}"}), 500
+
+        evaluation_result = clean_and_parse_json(evaluation_response.output.text.strip())
+
+        # 确保所有必要的字段都存在
+        required_fields = ['evaluation', 'accuracy', 'coverage', 'fluency', 'structure', 'suggestions']
+        for field in required_fields:
+            if field not in evaluation_result:
+                evaluation_result[field] = "未提供"
+
+        # 第二次调用：生成范文
+        example_response = Generation.call(
+            model='qwen-turbo',
+            prompt=f"""基于以下原文和评价意见，请生成一个优秀的英文复述范文。
+
+原文：
+{original_text}
+
+评价意见：
+{evaluation_result['suggestions']}
+
+请用英文生成一个简洁、准确、流畅的复述范文，确保涵盖原文的主要观点，并改进了之前复述中的不足。
+""",
+            max_tokens=1000
+        )
+
+        if example_response.status_code != 200:
+            evaluation_result['example_summary'] = "无法生成范文"
+        else:
+            evaluation_result['example_summary'] = example_response.output.text.strip()
+
+        return jsonify(evaluation_result)
+
+    except Exception as e:
+        return jsonify({"error": f"评价复述失败: {str(e)}"}), 500
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0')
