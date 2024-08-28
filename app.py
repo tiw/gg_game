@@ -1,11 +1,14 @@
 import json
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 import os
 from datetime import datetime
 from dashscope import Generation
 from dotenv import load_dotenv
 import re
 import uuid
+import sqlite3
 
 # 导入之前的函数
 from reader_assis import load_progress, save_progress, find_start_of_content
@@ -18,6 +21,39 @@ if not os.path.exists(os.path.join(nltk_data_path, "tokenizers", "punkt")):
     print("NLTK 数据下载完成。")
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'your_secret_key'  # 请更改为一个安全的随机字符串
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
+class User(UserMixin):
+    def __init__(self, id, username):
+        self.id = id
+        self.username = username
+
+@login_manager.user_loader
+def load_user(user_id):
+    conn = sqlite3.connect('users.db')
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+    user = cur.fetchone()
+    conn.close()
+    if user:
+        return User(user[0], user[1])
+    return None
+
+def init_db():
+    conn = sqlite3.connect('users.db')
+    cur = conn.cursor()
+    cur.execute('''CREATE TABLE IF NOT EXISTS users
+                   (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    password TEXT NOT NULL)''')
+    conn.commit()
+    conn.close()
+
+init_db()
 
 # 加载环境变量
 load_dotenv()
@@ -84,6 +120,7 @@ def analyze_text(text):
         return {"error": f"分析文本失败: {str(e)}"}
 
 @app.route('/')
+@login_required
 def index():
     books = [f for f in os.listdir('books') if f.endswith('.txt')]
     return render_template('index.html', books=books)
@@ -208,7 +245,7 @@ def evaluate_summary():
         required_fields = ['evaluation', 'accuracy', 'coverage', 'fluency', 'structure', 'suggestions']
         for field in required_fields:
             if field not in evaluation_result:
-                evaluation_result[field] = "未提供"
+                evaluation_result[field] = "评价生成中，请稍后再试"
 
         # 第二次调用：生成范文
         example_response = Generation.call(
@@ -227,7 +264,7 @@ def evaluate_summary():
         )
 
         if example_response.status_code != 200:
-            evaluation_result['example_summary'] = "无法生成范文"
+            evaluation_result['example_summary'] = "评价生成中，请稍后再试"
         else:
             evaluation_result['example_summary'] = example_response.output.text.strip()
 
@@ -236,5 +273,58 @@ def evaluate_summary():
     except Exception as e:
         return jsonify({"error": f"评价复述失败: {str(e)}"}), 500
 
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        
+        conn = sqlite3.connect('users.db')
+        cur = conn.cursor()
+        
+        cur.execute("SELECT * FROM users WHERE username = ?", (username,))
+        if cur.fetchone():
+            conn.close()
+            flash('用户名已存在')
+            return redirect(url_for('signup'))
+        
+        hashed_password = generate_password_hash(password)
+        cur.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, hashed_password))
+        conn.commit()
+        conn.close()
+        
+        flash('注册成功，请登录')
+        return redirect(url_for('login'))
+    
+    return render_template('signup.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        
+        conn = sqlite3.connect('users.db')
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM users WHERE username = ?", (username,))
+        user = cur.fetchone()
+        conn.close()
+        
+        if user and check_password_hash(user[2], password):
+            login_user(User(user[0], user[1]))
+            flash('登录成功')
+            return redirect(url_for('index'))
+        else:
+            flash('用户名或密码错误')
+    
+    return render_template('login.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    flash('已退出登录')
+    return redirect(url_for('index'))
+
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0')
+    app.run(debug=True, host='0.0.0.0', port=5001)
