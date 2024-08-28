@@ -6,6 +6,8 @@ import nltk
 from nltk.tokenize import word_tokenize, sent_tokenize
 from nltk.corpus import words as nltk_words
 from nltk.corpus import wordnet
+from dotenv import load_dotenv
+from dashscope import Generation
 
 # 下载必要的NLTK数据
 def download_nltk_data():
@@ -20,14 +22,36 @@ def download_nltk_data():
 # 确保NLTK数据被下载
 download_nltk_data()
 
+# 加载环境变量
+load_dotenv()
+
+# 初始化dashscope客户端
+Generation.api_key = os.getenv("DASHSCOPE_API_KEY")
+
 # 获取英语常用词集合
 english_words = set(w.lower() for w in nltk_words.words())
 
 def get_word_definition(word):
+    # 获取WordNet英文定义
     synsets = wordnet.synsets(word)
-    if synsets:
-        return synsets[0].definition()
-    return "No definition found"
+    english_definition = synsets[0].definition() if synsets else "无英文定义"
+
+    # 获取通义千问中文定义
+    try:
+        response = Generation.call(
+            model='qwen-turbo',
+            prompt=f"请简洁地解释英语单词'{word}'的含义:",
+            max_tokens=50
+        )
+        if response.status_code == 200:
+            chinese_definition = response.output.text.strip()
+        else:
+            chinese_definition = "无法获取中文定义"
+    except Exception as e:
+        print(f"获取单词定义时出错: {e}")
+        chinese_definition = "获取中文定义失败"
+
+    return f"英文: {english_definition}\n中文: {chinese_definition}"
 
 def load_progress(book_title):
     progress_file = f"books/{book_title}_progress.json"
@@ -41,13 +65,37 @@ def save_progress(book_title, progress):
     with open(progress_file, 'w', encoding='utf-8') as f:
         json.dump(progress, f)
 
-def is_difficult_word(word):
-    return word.lower() not in english_words and len(word) > 3
+def is_difficult_word(word, sentence):
+    try:
+        response = Generation.call(
+            model='qwen-turbo',
+            prompt=f"对于小学生来说,在以下句子中,'{word}'是否是一个难词？请只回答'是'或'否'：\n\n{sentence}",
+            max_tokens=10
+        )
+        if response.status_code == 200:
+            return response.output.text.strip().lower() == '是'
+        else:
+            print(f"判断难词时出错: {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"判断难词时出错: {e}")
+        return False
 
-def analyze_sentence(sentence):
-    words = word_tokenize(sentence)
-    difficult_words = [(word, get_word_definition(word)) for word in words if is_difficult_word(word)]
-    return difficult_words
+def analyze_text(text):
+    try:
+        response = Generation.call(
+            model='qwen-turbo',
+            prompt=f"请分析以下文本,找出对小学生来说的难词,并给出这些词的中文和英文解释。格式如下:\n难词1: 中文解释 | 英文解释\n难词2: 中文解释 | 英文解释\n\n文本:\n{text}",
+            max_tokens=1000
+        )
+        if response.status_code == 200:
+            return response.output.text.strip()
+        else:
+            print(f"分析文本时出错: {response.status_code}")
+            return "无法获取分析结果"
+    except Exception as e:
+        print(f"分析文本时出错: {e}")
+        return "分析文本失败"
 
 def find_start_of_content(content):
     # 查找正文开始的标记
@@ -100,13 +148,9 @@ def read_book(book_path):
     print(daily_content)
     print()
     
-    sentences = sent_tokenize(daily_content)
-    for sentence in sentences:
-        difficult_words = analyze_sentence(sentence)
-        if difficult_words:
-            print("难词:")
-            for word, definition in difficult_words:
-                print(f"  {word}: {definition}")
+    print("难词分析:")
+    analysis_result = analyze_text(daily_content)
+    print(analysis_result)
     print()
     
     progress["current_position"] = current_position + len(daily_content)
@@ -130,7 +174,7 @@ def main():
     
     while True:
         try:
-            choice = int(input("请选择一本书 (输入数字): ")) - 1
+            choice = int(input("请选择一本书 (输入数���): ")) - 1
             if 0 <= choice < len(books):
                 read_book(os.path.join(books_dir, books[choice]))
                 break

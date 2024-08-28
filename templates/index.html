@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>阅读助手</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1, h2 {
+            color: #2c3e50;
+        }
+        select, button {
+            font-size: 16px;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        #content, #analysis {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            margin-top: 20px;
+        }
+        .highlight {
+            background-color: #ffeaa7;
+            padding: 2px 0;
+        }
+        .word-item {
+            margin-bottom: 10px;
+        }
+        .word {
+            font-weight: bold;
+            color: #e74c3c;
+        }
+        .explanation {
+            margin-left: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>阅读助手</h1>
+    <select id="book-select">
+        {% for book in books %}
+        <option value="{{ book }}">{{ book }}</option>
+        {% endfor %}
+    </select>
+    <button onclick="readBook()">开始阅读</button>
+    <div id="content"></div>
+    <div id="analysis"></div>
+
+    <script>
+        function escapeRegExp(string) {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            
+        }
+
+        function highlightDifficultWords(content, difficultWords) {
+            let highlightedContent = content;
+            difficultWords.forEach(word => {
+                const escapedWord = escapeRegExp(word);
+                const regex = new RegExp(`\\b${escapedWord}\\b`, 'gi');
+                highlightedContent = highlightedContent.replace(regex, match => `<span class="highlight">${match}</span>`);
+            });
+            return highlightedContent;
+        }
+
+        function updateContent(content, wordCount, difficultWords) {
+            console.log("Original content:", content); // 打印原始内容
+            const highlightedContent = highlightDifficultWords(content, difficultWords);
+            console.log("Highlighted content:", highlightedContent); // 打印高亮后的内容
+            document.getElementById('content').innerHTML = `
+                <h2>今天的阅读内容 (${wordCount} 词):</h2>
+                <p style="white-space: pre-wrap;">${highlightedContent}</p>
+            `;
+        }
+
+        function updateAnalysis(analysis) {
+            const analysisHtml = analysis.split('\n')
+                .filter(line => line.trim() !== '')
+                .map(line => {
+                    const match = line.match(/^(\d+\.?\s*"?[^"]+?"?\s*-\s*.+?):\s*(.+)/);
+                    if (match) {
+                        const [, word, explanation] = match;
+                        return `
+                            <div class="word-item">
+                                <span class="word">${word.trim()}:</span>
+                                <span class="explanation">${explanation.trim()}</span>
+                            </div>
+                        `;
+                    }
+                    return '';
+                })
+                .join('');
+            
+            document.getElementById('analysis').innerHTML = `
+                <h2>难词分析:</h2>
+                ${analysisHtml}
+            `;
+        }
+
+        function printDifficultWords(difficultWords) {
+            console.log("Difficult words:", difficultWords);
+        }
+
+        function readBook() {
+            const book = document.getElementById('book-select').value;
+            axios.post('/read', { book: book }, {
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+            })
+            .then(function (response) {
+                const difficultWords = response.data.analysis.split('\n')
+                    .filter(line => line.trim() !== '')
+                    .map(line => {
+                        // 移除序号和可能的点，然后提取引号内的词或词组
+                        const match = line.match(/^\d+\.?\s*"?([^"]+)"?\s*-/);
+                        return match ? match[1].trim() : '';
+                    })
+                    .filter(word => word !== ''); // 移除空字符串
+                
+                printDifficultWords(difficultWords); // 打印难词列表
+                
+                updateContent(response.data.content, response.data.word_count, difficultWords);
+                updateAnalysis(response.data.analysis);
+            })
+            .catch(function (error) {
+                console.log(error);
+            });
+        }
+    </script>
+</body>
+</html>
