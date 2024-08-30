@@ -9,6 +9,23 @@ from dotenv import load_dotenv
 import re
 import uuid
 import sqlite3
+import hashlib
+import logging
+from logging.handlers import RotatingFileHandler
+
+# 创建日志目录（如果不存在）
+log_dir = 'logs'
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir)
+
+# 设置日志
+log_file = os.path.join(log_dir, 'app.log')
+handler = RotatingFileHandler(log_file, maxBytes=10*1024*1024, backupCount=5)
+handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+logger.addHandler(handler)
 
 # 导入之前的函数
 from reader_assis import find_start_of_content
@@ -76,12 +93,69 @@ def clean_and_parse_json(json_string):
         try:
             return json.loads(json_str)
         except json.JSONDecodeError as e:
-            print(f"JSON解析错误: {e}")
+            logger.error(f"JSON解析错误: {e}")
             return {"error": f"无法解析分析结果: {e}"}
     else:
         return {"error": "无法从返回结果中提取JSON"}
 
+# 初始化数据库
+def init_db():
+    conn = sqlite3.connect('cache.db')
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS analysis_cache
+                 (content_hash TEXT PRIMARY KEY, analysis TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+    conn.commit()
+    conn.close()
+
+init_db()
+
+def get_cached_analysis(content_hash):
+    conn = sqlite3.connect('cache.db')
+    c = conn.cursor()
+    c.execute("SELECT analysis FROM analysis_cache WHERE content_hash = ?", (content_hash,))
+    result = c.fetchone()
+    conn.close()
+    if result:
+        logger.info(f"从缓存中获取分析结果: {content_hash[:10]}...")
+        try:
+            cached_data = json.loads(result[0])
+            if "words" in cached_data and isinstance(cached_data["words"], list):
+                logger.info(f"成功从缓存中读取数据: {content_hash[:10]}...")
+                return cached_data
+            else:
+                logger.error(f"缓存数据格式错误: {content_hash[:10]}...")
+        except json.JSONDecodeError:
+            logger.error(f"缓存数据解析错误: {content_hash[:10]}...")
+    else:
+        logger.info(f"缓存中未找到数据: {content_hash[:10]}...")
+    return None
+
+def save_analysis_to_cache(content_hash, analysis):
+    if "words" not in analysis or not isinstance(analysis["words"], list):
+        logger.error(f"尝试缓存格式错误的数据: {content_hash[:10]}...")
+        return
+    
+    conn = sqlite3.connect('cache.db')
+    c = conn.cursor()
+    try:
+        c.execute("INSERT OR REPLACE INTO analysis_cache (content_hash, analysis) VALUES (?, ?)",
+                  (content_hash, json.dumps(analysis)))
+        conn.commit()
+        logger.info(f"成功保存分析结果到缓存: {content_hash[:10]}...")
+    except sqlite3.Error as e:
+        logger.error(f"保存缓存时出错: {e}")
+    finally:
+        conn.close()
+
 def analyze_text(text):
+    content_hash = hashlib.md5(text.encode()).hexdigest()
+    
+    cached_result = get_cached_analysis(content_hash)
+    if cached_result:
+        logger.info(f"使用缓存的分析结果: {content_hash[:10]}...")
+        return cached_result
+
+    logger.info(f"缓存未命中，正在查询 qwen: {content_hash[:10]}...")
     try:
         response = Generation.call(
             model='qwen-turbo',
@@ -105,18 +179,23 @@ def analyze_text(text):
         )
         if response.status_code == 200:
             result = response.output.text.strip()
-            print("通义千问返回的分析结果：", result)
+            logger.info(f"qwen 返回的分析结果：{result[:100]}...")
             
             data = clean_and_parse_json(result)
-            if "error" not in data:
+            if "error" not in data and "words" in data and isinstance(data["words"], list):
                 for i, word_info in enumerate(data['words']):
                     word_info['id'] = f"word_{i}"
-            return data
+                save_analysis_to_cache(content_hash, data)
+                logger.info(f"成功分析并缓存结果: {content_hash[:10]}...")
+                return data
+            else:
+                logger.error(f"分析结果格式错误: {data.get('error', '未知错误')}")
+                return {"error": "分析结果格式错误"}
         else:
-            print(f"分析文时出错: {response.status_code}")
+            logger.error(f"分析文本时出错: {response.status_code}")
             return {"error": f"无法获取分析结果: {response.status_code}"}
     except Exception as e:
-        print(f"分析文本时出错: {e}")
+        logger.error(f"分析文本时出错: {e}")
         return {"error": f"分析文本失败: {str(e)}"}
 
 @app.route('/')
@@ -128,9 +207,16 @@ def index():
 @app.route('/read', methods=['POST'])
 @login_required
 def read():
-    book_title = request.form['book']
+    data = request.json
+    if not data or 'book' not in data:
+        return jsonify({"error": "No book specified"}), 400
+    
+    book_title = data['book']
     book_path = os.path.join('books', book_title)
     
+    if not os.path.exists(book_path):
+        return jsonify({"error": "Book not found"}), 404
+
     with open(book_path, 'r', encoding='utf-8') as f:
         content = f.read()
 
@@ -149,20 +235,27 @@ def read():
     paragraphs = content[current_position:].split('\n\n')
     daily_content = ""
     paragraphs_read = 0
+    analysis_results = []
     
     while len(daily_content) < 200 and paragraphs_read < len(paragraphs):
-        daily_content += paragraphs[paragraphs_read] + "\n\n"
+        paragraph = paragraphs[paragraphs_read].strip()
+        daily_content += paragraph + "\n\n"
         paragraphs_read += 1
+        
+        # 分析每个段落
+        if paragraph:
+            analysis_result = analyze_text(paragraph)
+            analysis_results.append(analysis_result)
     
     word_count = len(simple_word_tokenize(daily_content))
     
     if not daily_content.strip():
         analysis_result = {"error": "没有可分析的内容"}
     else:
-        analysis_result = analyze_text(daily_content)
+        analysis_result = analysis_results
     
-    if "error" in analysis_result:
-        print(f"分析结果出错: {analysis_result['error']}")
+    if isinstance(analysis_result, list) and any("error" in result for result in analysis_result):
+        logger.error(f"分析结果出错: {[result['error'] for result in analysis_result if 'error' in result]}")
 
     progress["current_position"] = current_position + len(daily_content)
     progress["last_read_date"] = today
@@ -173,7 +266,7 @@ def read():
         'word_count': word_count,
         'analysis': analysis_result
     }
-    print("发送给前端的数据：", response_data)  # 添加调试信息
+    logger.info(f"发送给前端的数据：{str(response_data)[:200]}...")  # 添加调试信息
     return jsonify(response_data)
 
 # 添加这个简单的分词函数

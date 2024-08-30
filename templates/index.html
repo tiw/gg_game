@@ -210,42 +210,49 @@
         function readBook() {
             const book = document.getElementById('book-select').value;
             axios.post('/read', { book: book }, {
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+                headers: { 'Content-Type': 'application/json' }
             })
             .then(function (response) {
-                currentContent = response.data.content; // 保存当前内容
-                document.getElementById('content').innerHTML = `<h2>今天的阅读内容 (${response.data.word_count} 词):</h2><p>${response.data.content}</p>`;
-                updateAnalysis(response.data.analysis);
+                const data = response.data;
+                console.log('Received data:', data);  // 添加这行来记录接收到的数据
+                currentContent = data.content; // 保存当前内容
+                document.getElementById('content').innerHTML = `<h2>今天的阅读内容 (${data.word_count} 词):</h2><p>${data.content}</p>`;
+                
+                if (data.error) {
+                    console.error('Error:', data.error);
+                    document.getElementById('analysis').innerHTML = `<p>分析错误: ${data.error}</p>`;
+                } else if (data.analysis && Array.isArray(data.analysis)) {
+                    let allWords = [];
+                    data.analysis.forEach(paragraphAnalysis => {
+                        if (paragraphAnalysis.words && Array.isArray(paragraphAnalysis.words)) {
+                            allWords = allWords.concat(paragraphAnalysis.words);
+                        }
+                    });
+                    
+                    const analysisHtml = allWords.map(word => `
+                        <div class="word-item">
+                            <div class="word">${word.word}</div>
+                            <div class="explanation">
+                                <strong>中文解释:</strong> ${word.chinese_explanation}<br>
+                                <strong>英文解释:</strong> ${word.english_explanation}<br>
+                                <strong>例句:</strong> <span class="example">${word.example}</span>
+                            </div>
+                        </div>
+                    `).join('');
+                    
+                    document.getElementById('analysis').innerHTML = `
+                        <h2>难词分析:</h2>
+                        ${analysisHtml}
+                    `;
+                } else {
+                    console.error('Unexpected data format:', data);
+                    document.getElementById('analysis').innerHTML = `<p>分析结果格式错误</p>`;
+                }
             })
             .catch(function (error) {
-                console.log(error);
+                console.error('Fetch error:', error);
+                document.getElementById('analysis').innerHTML = `<p>获取分析结果时出错</p>`;
             });
-        }
-
-        function updateAnalysis(analysis) {
-            if (analysis.error) {
-                document.getElementById('analysis').innerHTML = `<p>分析错误: ${analysis.error}</p>`;
-                return;
-            }
-            if (!analysis.words || !Array.isArray(analysis.words)) {
-                document.getElementById('analysis').innerHTML = `<p>分析结果格式错误</p>`;
-                return;
-            }
-            const analysisHtml = analysis.words.map(word => `
-                <div class="word-item">
-                    <div class="word">${word.word}</div>
-                    <div class="explanation">
-                        <strong>中文解释:</strong> ${word.chinese_explanation}<br>
-                        <strong>英文解释:</strong> ${word.english_explanation}<br>
-                        <strong>例句:</strong> <span class="example">${word.example}</span>
-                    </div>
-                </div>
-            `).join('');
-            
-            document.getElementById('analysis').innerHTML = `
-                <h2>难词分析:</h2>
-                ${analysisHtml}
-            `;
         }
 
         function submitSummary() {
