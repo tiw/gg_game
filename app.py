@@ -261,10 +261,15 @@ def read():
     progress["last_read_date"] = today
     save_progress(book_title, progress, current_user.id)
     
+    # 更新阅读历史
+    if progress["current_position"] > 0:
+        update_reading_history(current_user.id, book_title, f"位置: {progress['current_position']}")
+    
     response_data = {
         'content': daily_content,
         'word_count': word_count,
-        'analysis': analysis_result
+        'analysis': analysis_result,
+        'current_position': progress["current_position"]
     }
     logger.info(f"发送给前端的数据：{str(response_data)[:200]}...")  # 添加调试信息
     return jsonify(response_data)
@@ -431,6 +436,81 @@ def save_progress(book_title, progress, user_id):
     progress_file = f'progress_{user_id}_{book_title}.json'
     with open(progress_file, 'w') as f:
         json.dump(progress, f)
+
+@app.route('/personal_page')
+@login_required
+def personal_page():
+    reading_history = get_user_reading_history(current_user.id)
+    return render_template('personal_page.html', reading_history=reading_history)
+
+def get_user_reading_history(user_id):
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute('''
+        SELECT book, chapter FROM reading_history
+        WHERE user_id = ? ORDER BY book, id DESC
+    ''', (user_id,))
+    rows = cursor.fetchall()
+    
+    history = {}
+    for book, chapter in rows:
+        if 'undefined' not in chapter.lower():
+            if book not in history:
+                history[book] = []
+            if chapter not in history[book]:
+                history[book].append(chapter)
+    
+    return history
+
+import sqlite3
+from flask import g
+
+DATABASE = 'reading_history.db'
+
+def get_db():
+    db = getattr(g, '_database', None)
+    if db is None:
+        db = g._database = sqlite3.connect(DATABASE)
+    return db
+
+@app.teardown_appcontext
+def close_connection(exception):
+    db = getattr(g, '_database', None)
+    if db is not None:
+        db.close()
+
+def init_db():
+    with app.app_context():
+        db = get_db()
+        with app.open_resource('schema.sql', mode='r') as f:
+            db.cursor().executescript(f.read())
+        db.commit()
+
+# 在应用启动时初始化数据库
+init_db()
+
+def update_reading_history(user_id, book, chapter):
+    if not all([user_id, book, chapter]) or 'undefined' in chapter.lower():
+        logger.warning(f"尝试保存无效的阅读历史: user_id={user_id}, book={book}, chapter={chapter}")
+        return  # 如果数据无效,直接返回而不保存
+
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute('''
+        INSERT OR REPLACE INTO reading_history (user_id, book, chapter)
+        VALUES (?, ?, ?)
+    ''', (user_id, book, chapter))
+    db.commit()
+    logger.info(f"更新阅读历史: user_id={user_id}, book={book}, chapter={chapter}")
+
+@app.route('/update_reading_history', methods=['POST'])
+@login_required
+def update_reading_history_route():
+    data = request.json
+    book = data.get('book')
+    chapter = data.get('chapter')
+    update_reading_history(current_user.id, book, chapter)
+    return jsonify({'status': 'success'})
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5001)

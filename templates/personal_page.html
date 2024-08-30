@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>个人页面 - {{ current_user.username }}</title>
+    <style>
+        /* 复制index.html中的所有样式 */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background-color: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            max-width: 800px;
+            width: 100%;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .user-info {
+            text-align: right;
+            margin-bottom: 20px;
+        }
+        .user-info a {
+            color: #4a4a4a;
+            text-decoration: none;
+            margin-left: 10px;
+        }
+        .user-info a:hover {
+            text-decoration: underline;
+        }
+        #book-list {
+            margin-top: 20px;
+        }
+        .book-item {
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .book-title {
+            font-weight: bold;
+            color: #4a4a4a;
+            margin-bottom: 5px;
+        }
+        .chapter-list {
+            margin-left: 20px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="user-info">
+            <p><a href="{{ url_for('personal_page') }}">{{ current_user.username }}</a></p>
+            <a href="{{ url_for('logout') }}">退出登录</a>
+        </div>
+        <h1>阅读历史</h1>
+        <div id="book-list">
+            {% if reading_history %}
+                {% for book, chapters in reading_history.items() %}
+                    <div class="book-item">
+                        <div class="book-title">{{ book }}</div>
+                        <div class="chapter-list">
+                            {% for chapter in chapters %}
+                                <div>{{ chapter }}</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p>您还没有阅读历史记录。</p>
+            {% endif %}
+        </div>
+        <p style="text-align: center;"><a href="{{ url_for('index') }}">返回主页</a></p>
+    </div>
+</body>
+</html>

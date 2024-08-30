@@ -164,7 +164,7 @@
 <body>
     <div class="container">
         <div class="user-info">
-            <p>欢迎，{{ current_user.username }}</p>
+            <p><a href="{{ url_for('personal_page') }}">{{ current_user.username }}</a></p>
             <a href="{{ url_for('logout') }}">退出登录</a>
         </div>
         <h1>阅读助手</h1>
@@ -247,6 +247,16 @@
                 } else {
                     console.error('Unexpected data format:', data);
                     document.getElementById('analysis').innerHTML = `<p>分析结果格式错误</p>`;
+                }
+
+                // 更新阅读历史
+                if (response.data.current_position && response.data.current_position > 0) {
+                    axios.post('/update_reading_history', {
+                        book: book,
+                        chapter: '位置: ' + response.data.current_position
+                    }).catch(function (error) {
+                        console.error('更新阅读历史时出错:', error);
+                    });
                 }
             })
             .catch(function (error) {
