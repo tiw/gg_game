@@ -11,7 +11,7 @@ import uuid
 import sqlite3
 
 # 导入之前的函数
-from reader_assis import load_progress, save_progress, find_start_of_content
+from reader_assis import find_start_of_content
 
 # 检查 NLTK 数据是否已下载
 nltk_data_path = os.path.expanduser("~/nltk_data")
@@ -126,6 +126,7 @@ def index():
     return render_template('index.html', books=books)
 
 @app.route('/read', methods=['POST'])
+@login_required
 def read():
     book_title = request.form['book']
     book_path = os.path.join('books', book_title)
@@ -135,7 +136,7 @@ def read():
 
     content = clean_text(content)
 
-    progress = load_progress(book_title)
+    progress = load_progress(book_title, current_user.id)
     current_position = progress["current_position"]
     
     today = datetime.now().date().isoformat()
@@ -165,7 +166,7 @@ def read():
 
     progress["current_position"] = current_position + len(daily_content)
     progress["last_read_date"] = today
-    save_progress(book_title, progress)
+    save_progress(book_title, progress, current_user.id)
     
     response_data = {
         'content': daily_content,
@@ -325,6 +326,18 @@ def logout():
     logout_user()
     flash('已退出登录')
     return redirect(url_for('index'))
+
+def load_progress(book_title, user_id):
+    progress_file = f'progress_{user_id}_{book_title}.json'
+    if os.path.exists(progress_file):
+        with open(progress_file, 'r') as f:
+            return json.load(f)
+    return {"current_position": 0, "last_read_date": ""}
+
+def save_progress(book_title, progress, user_id):
+    progress_file = f'progress_{user_id}_{book_title}.json'
+    with open(progress_file, 'w') as f:
+        json.dump(progress, f)
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5001)

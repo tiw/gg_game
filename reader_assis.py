@@ -20,7 +20,7 @@ def download_nltk_data():
             nltk.download(resource, quiet=True)
 
 # 确保NLTK数据被下载
-download_nltk_data()
+# download_nltk_data()
 
 # 加载环境变量
 load_dotenv()
